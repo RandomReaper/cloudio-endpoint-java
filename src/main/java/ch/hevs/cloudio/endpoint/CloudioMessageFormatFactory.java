@@ -2,8 +2,8 @@ package ch.hevs.cloudio.endpoint;
 
 import java.util.HashMap;
 
-class CloudioMessageFormatFactory {
-    static CloudioMessageFormat massageFormat(int messageFormatId) {
+public class CloudioMessageFormatFactory {
+    public static CloudioMessageFormat massageFormat(int messageFormatId) {
         if (formats.containsKey(messageFormatId)) {
             return formats.get(messageFormatId);
         } else {

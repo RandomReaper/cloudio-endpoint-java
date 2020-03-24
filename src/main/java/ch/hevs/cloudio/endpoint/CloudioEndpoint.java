@@ -1,18 +1,16 @@
 package ch.hevs.cloudio.endpoint;
 
+import ch.hevs.cloudio.endpoint.configuration.CloudioEndpointConfiguration;
+import ch.hevs.cloudio.endpoint.configuration.PropertiesEndpointConfiguration;
+import ch.hevs.cloudio.endpoint.transport.Transport;
+import ch.hevs.cloudio.endpoint.transport.TransportException;
+import ch.hevs.cloudio.endpoint.transport.TransportListener;
+import ch.hevs.cloudio.endpoint.transport.TransportMqttPaho;
 import ch.hevs.utils.ResourceLoader;
-import org.eclipse.paho.client.mqttv3.*;
-import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
-import org.eclipse.paho.client.mqttv3.persist.MqttDefaultFilePersistence;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.net.ssl.KeyManagerFactory;
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLSocketFactory;
-import javax.net.ssl.TrustManagerFactory;
 import java.io.InputStream;
-import java.security.KeyStore;
 import java.util.*;
 
 /**
@@ -278,7 +276,7 @@ public class CloudioEndpoint implements CloudioEndpointService {
 
     @Override
     public boolean isOnline() {
-        return internal.mqtt.isConnected();
+        return internal.transport.isConnected();
     }
 
     @Override
@@ -305,8 +303,8 @@ public class CloudioEndpoint implements CloudioEndpointService {
             if (isOnline()) {
                 try {
                     byte[] data = internal.messageFormat.serializeNode(node.internal);
-                    internal.mqtt.publish("@nodeAdded/" + node.internal.getUuid(), data, 1, false);
-                } catch (MqttException exception) {
+                    internal.transport.publish("@nodeAdded/" + node.internal.getUuid(), data, 1, false);
+                } catch (TransportException exception) {
                     log.error("Exception: " + exception.getMessage());
                     exception.printStackTrace();
                 }
@@ -346,8 +344,8 @@ public class CloudioEndpoint implements CloudioEndpointService {
             // If the endpoint is online, send the node remove message.
             if (isOnline()) {
                 try {
-                    internal.mqtt.publish("@nodeRemoved/" + node.internal.getUuid(), null, 1, false);
-                } catch (MqttException exception) {
+                    internal.transport.publish("@nodeRemoved/" + node.internal.getUuid(), null, 1, false);
+                } catch (TransportException exception) {
                     log.error("Exception: " + exception.getMessage());
                     exception.printStackTrace();
                 }
@@ -369,8 +367,8 @@ public class CloudioEndpoint implements CloudioEndpointService {
                 // If the endpoint is online, send the node remove message.
                 if (isOnline()) {
                     try {
-                        internal.mqtt.publish("@nodeRemoved/" + internalNode.getUuid(), null, 1, false);
-                    } catch (MqttException exception) {
+                        internal.transport.publish("@nodeRemoved/" + internalNode.getUuid(), null, 1, false);
+                    } catch (TransportException exception) {
                         log.error("Exception: " + exception.getMessage());
                         exception.printStackTrace();
                     }
@@ -389,42 +387,14 @@ public class CloudioEndpoint implements CloudioEndpointService {
     }
 
     /*** Internal API *************************************************************************************************/
-    class InternalEndpoint implements CloudioNodeContainer, MqttCallback, Runnable {
+    class InternalEndpoint implements CloudioNodeContainer, TransportListener {
         /*** Constants ************************************************************************************************/
         private static final String UUID_PROPERTY	                = "ch.hevs.cloudio.endpoint.uuid";
-        private static final String MQTT_HOST_URI_PROPERTY          = "ch.hevs.cloudio.endpoint.hostUri";
-        private static final String MQTT_CONNECTION_TIMEOUT_PROPERTY= "ch.hevs.cloudio.endpoint.connectTimeout";
-        private static final String MQTT_CONNECTION_TIMEOUT_DEFAULT = "5";
-        private static final String MQTT_CONNECT_RETRY_PROPERTY     = "ch.hevs.cloudio.endpoint.connectRetryInterval";
-        private static final String MQTT_CONNECT_RETRY_DEFAULT      = "10";
-        private static final String MQTT_KEEPALIVE_INTERVAL_PROPERTY= "ch.hevs.cloudio.endpoint.keepAliveInterval";
-        private static final String MQTT_KEEPALIVE_INTERVAL_DEFAULT = "60";
-        private static final String MQTT_MAXINFLIGHT_PROPERTY		= "ch.hevs.cloudio.endpoint.maxInFlight";
-        private static final String MQTT_MAXINFLIGHT_DEFAULT		= "1000";
-        private static final String MQTT_PERSISTENCE_MEMORY         = "memory";
-        private static final String MQTT_PERSISTENCE_FILE           = "file";
-        private static final String MQTT_PERSISTENCE_NONE           = "none";
-        private static final String MQTT_PERSISTENCE_PROPERTY       = "ch.hevs.cloudio.endpoint.persistence";
-        private static final String MQTT_PERSISTENCE_DEFAULT        = MQTT_PERSISTENCE_FILE;
-        private static final String ENDPOINT_IDENTITY_FILE_TYPE     = "PKCS12";
-        private static final String ENDPOINT_IDENTITY_MANAGER_TYPE  = "SunX509";
-        private static final String ENDPOINT_IDENTITY_FILE_PROPERTY = "ch.hevs.cloudio.endpoint.ssl.clientCert";
-        private static final String ENDPOINT_IDENTITY_PASS_PROPERTY = "ch.hevs.cloudio.endpoint.ssl.clientPassword";
-        private static final String ENDPOINT_IDENTITY_PASS_DEFAULT  = "";
-        private static final String CERT_AUTHORITY_FILE_TYPE        = "JKS";
-        private static final String CERT_AUTHORITY_MANAGER_TYPE     = "SunX509";
-        private static final String CERT_AUTHORITY_FILE_PROPERTY    = "ch.hevs.cloudio.endpoint.ssl.authorityCert";
-        private static final String CERT_AUTHORITY_FILE_DEFAULTNAME = "authority.jks";
-        private static final String CERT_AUTHORITY_PASS_PROPERTY    = "ch.hevs.cloudio.endpoint.ssl.authorityPassword";
-        private static final String CERT_AUTHORITY_PASS_DEFAULT     = "";
-        private static final String SSL_PROTOCOL_PROPERTY           = "ch.hevs.cloudio.endpoint.ssl.protocol";
-        private static final String SSL_PROTOCOL_DEFAULT            = "TLSv1.2";
+        private static final String TRANSPORT_PROPERTY	            = "ch.hevs.cloudio.endpoint.transport";
+        private static final String TRANSPORT_PROPERTY_MQTT_PAHO	= "mqtt_paho";
+        private static final String TRANSPORT_PROPERTY_DEFAULT      = TRANSPORT_PROPERTY_MQTT_PAHO;
         private static final String MESSAGE_FORMAT                  = "ch.hevs.cloudio.endpoint.messageFormat";
         private static final String MESSAGE_FORMAT_DEFAULT          = "json";
-        private static final String MQTT_CLEAN_SESSION_PROPERTY     = "ch.hevs.cloudio.endpoint.cleanSession";
-        private static final String MQTT_CLEAN_SESSION_DEFAULT      = "false";
-        private static final String SSL_VERIFY_HOSTNAME_PROPERTY    = "ch.hevs.cloudio.endpoint.ssl.verifyHostname";
-        private static final String SSL_VERIFY_HOSTNAME_DEFAULT     = "true";
 
         /**
          * Characters prohibited in the UUID.
@@ -437,10 +407,7 @@ public class CloudioEndpoint implements CloudioEndpointService {
         /*** Attributes ***********************************************************************************************/
         private final String uuid;
         private final NamedItemSet<CloudioNode.InternalNode> nodes = new NamedItemSet<CloudioNode.InternalNode>();
-        private final MqttConnectOptions options;
-        private int retryInterval;
-        private final MqttAsyncClient mqtt;
-        private final MqttClientPersistence persistence;
+        private final Transport transport;
         private final CloudioMessageFormat messageFormat;
         private final List<CloudioEndpointListener> listeners = new LinkedList<CloudioEndpointListener>();
 
@@ -481,12 +448,7 @@ public class CloudioEndpoint implements CloudioEndpointService {
             		throw new InvalidUuidException(String.format("uuid(value:'%s') contains the invalid char 'UTF+%04X'",  uuid, (int)c));
             	}
             }
-
-            // Add the listener if present.
-            if (listener != null) {
-                this.listeners.add(listener);
-            }
-
+            
             // Create message format instance.
             String messageFormatId = configuration.getProperty(MESSAGE_FORMAT, MESSAGE_FORMAT_DEFAULT);
             if ("json".equals(messageFormatId)) {
@@ -498,107 +460,22 @@ public class CloudioEndpoint implements CloudioEndpointService {
                         "\"" + messageFormatId + "\"");
             }
 
-            // Create a SSL based MQTT option object.
-            options = new MqttConnectOptions();
-            try {
-                options.setSocketFactory(createSocketFactory(uuid, configuration));
-            } catch (Exception exception) {
-                throw new CloudioEndpointInitializationException(exception);
+            String transport_id = configuration.getProperty(TRANSPORT_PROPERTY, TRANSPORT_PROPERTY_DEFAULT);
+            if (transport_id == TRANSPORT_PROPERTY_MQTT_PAHO) {
+            	transport = new TransportMqttPaho(uuid, messageFormat.serializeEndpoint(InternalEndpoint.this), configuration, this);
+            }
+            else {
+            	throw new InvalidPropertyException("Unknown transport ("+TRANSPORT_PROPERTY+"): " +
+                        "\"" + transport_id + "\", supported transports :\"" + TRANSPORT_PROPERTY_MQTT_PAHO + "\"");
             }
 
-            // Enable or disable HTTPS hostname verification.
-            options.setHttpsHostnameVerificationEnabled("true".equals(configuration.getProperty(SSL_VERIFY_HOSTNAME_PROPERTY, SSL_VERIFY_HOSTNAME_DEFAULT)));
-
-            // Get retry interval.
-            try {
-                retryInterval = Integer.parseInt(configuration.getProperty(MQTT_CONNECT_RETRY_PROPERTY,
-                    MQTT_CONNECT_RETRY_DEFAULT));
-                if (retryInterval <= 0) {
-                    throw new InvalidPropertyException("Invalid connect retry interval " +
-                        "(ch.hevs.cloudio.endpoint.connectRetryInterval), " +
-                        "must be a greater than 0");
-                }
-            } catch (NumberFormatException exception) {
-                throw new InvalidPropertyException("Invalid connect retry interval " +
-                    "(ch.hevs.cloudio.endpoint.connectRetryInterval), " +
-                    "must be a valid integer number");
-            }
-
-            // Do we start a clean session?
-            String cleanSession = configuration.getProperty(MQTT_CLEAN_SESSION_PROPERTY, MQTT_CLEAN_SESSION_DEFAULT)
-                    .toLowerCase();
-            if ("true".equals(cleanSession)) {
-                options.setCleanSession(true);
-            } else if ("false".equals(cleanSession)) {
-                options.setCleanSession(false);
-            } else {
-                throw new InvalidPropertyException("Clean session parameter (ch.hevs.cloudio.endpoint.cleanSession), " +
-                        "must either be \"true\" or \"false\"");
-            }
-
-            // Get the connection timeout property.
-            try {
-                options.setConnectionTimeout(Integer.parseInt(
-                    configuration.getProperty(MQTT_CONNECTION_TIMEOUT_PROPERTY, MQTT_CONNECTION_TIMEOUT_DEFAULT)));
-            } catch (NumberFormatException e) {
-                throw new InvalidPropertyException("Invalid connect timeout " +
-                        "(ch.hevs.cloudio.endpoint.connectTimeout), " +
-                        "must be a valid integer number");
-            }
-
-            // Get the keep alive interval property.
-            try {
-                options.setKeepAliveInterval(Integer.parseInt(
-                    configuration.getProperty(MQTT_KEEPALIVE_INTERVAL_PROPERTY, MQTT_KEEPALIVE_INTERVAL_DEFAULT)));
-            } catch (NumberFormatException exception) {
-                throw new InvalidPropertyException("Invalid keep alive interval " +
-                        "(ch.hevs.cloudio.endpoint.keepAliveInterval), " +
-                        "must be a valid integer number");
+            // Add the listener if present.
+            if (listener != null) {
+                this.listeners.add(listener);
             }
             
-            // Get the maxInFlight property.
-            try {
-                options.setMaxInflight(Integer.parseInt(
-                    configuration.getProperty(MQTT_MAXINFLIGHT_PROPERTY, MQTT_MAXINFLIGHT_DEFAULT)));
-            } catch (NumberFormatException exception) {
-                throw new InvalidPropertyException("Invalid max in flight messages" +
-                        "(ch.hevs.cloudio.endpoint.maxInFlight), " +
-                        "must be a valid integer number");
-            }
-
-            // Create persistence object.
-            String persistenceProvider = configuration.getProperty(MQTT_PERSISTENCE_PROPERTY, MQTT_PERSISTENCE_DEFAULT);
-            if (persistenceProvider.equals(MQTT_PERSISTENCE_MEMORY)) {
-                persistence = new MemoryPersistence();
-            } else if (persistenceProvider.equals(MQTT_PERSISTENCE_FILE)) {
-                persistence = new MqttDefaultFilePersistence();
-            } else if (persistenceProvider.equals(MQTT_PERSISTENCE_NONE)) {
-                persistence = null;
-            } else {
-                throw new InvalidPropertyException("Unknown persistence implementation " +
-                        "(ch.hevs.cloudio.endpoint.persistence): " +
-                        "\"" + persistenceProvider + "\"");
-            }
-
-            // Last will is a message with the UUID of the endpoint and no payload.
-            options.setWill("@offline/" + uuid, new byte[0], 1, false);
-
-
-            // Create the MQTT client.
-            try {
-                String host = configuration.getProperty(MQTT_HOST_URI_PROPERTY);
-                if (host == null) {
-                    throw new InvalidPropertyException("Missing mandatory property \"" + MQTT_HOST_URI_PROPERTY + "\"");
-                }
-                mqtt = new MqttAsyncClient(configuration.getProperty(MQTT_HOST_URI_PROPERTY), uuid, persistence);
-            } catch (MqttException exception) {
-                throw new CloudioEndpointInitializationException(exception);
-            }
-
-            // Start the connection process in a detached thread.
-            new Thread(this).start();
         }
-
+        
         /*** NodeContainer Implementation *****************************************************************************/
         @Override
         public void attributeHasChangedByEndpoint(CloudioAttribute.InternalAttribute attribute) {
@@ -607,28 +484,18 @@ public class CloudioEndpoint implements CloudioEndpointService {
 
             // Try to send the message if the MQTT client is connected.
             boolean messageSend = false;
-            if (mqtt.isConnected()) {
+            if (transport.isConnected()) {
                 try {
-                    mqtt.publish("@update/" + attribute.getUuid().toString(), data, 1, false);
-                    messageSend = true;
-                } catch (MqttException exception) {
-                    log.error("Exception :" + exception.getMessage());
-                    exception.printStackTrace();
-                }
-            }
+                    transport.update(attribute.getUuid().toString(), data, 1, false);
 
-            // If the message could not be send for any reason, add the message to the pending updates persistence if
-            // available.
-            if (!messageSend && persistence != null) {
-                try {
-                    persistence.put("PendingUpdate-" + attribute.getUuid().toString().replace("/", ";")
-                            + "-" + Calendar.getInstance().getTimeInMillis(),
-                        new PendingUpdate(data));
-                } catch (MqttPersistenceException exception) {
+                    messageSend = true;
+                } catch (TransportException exception) {
                     log.error("Exception :" + exception.getMessage());
                     exception.printStackTrace();
                 }
             }
+            
+            // FIXME : Implement persitence independently of the transport layer
         }
 
         @Override
@@ -653,225 +520,12 @@ public class CloudioEndpoint implements CloudioEndpointService {
             throw new CloudioModificationException("CloudioEndpoint name can not be changed!");
         }
 
-        /*** MqttCallback implementation ******************************************************************************/
-        @Override
-        public void connectionLost(Throwable throwable) {
-            for (CloudioEndpointListener listener: listeners) {
-                listener.endpointIsOffline(CloudioEndpoint.this);
-            }
-
-            // Start thread that tries to reestablish the connection if needed.
-            if (retryInterval != 0) {
-                new Thread(this).start();
-            }
-        }
-
-        @Override
-        public void messageArrived(String topic, MqttMessage message) throws Exception {
-            try {
-                byte[] data = message.getPayload();
-
-                // First determine the message format (first byte identifies the message format).
-                CloudioMessageFormat messageFormat = CloudioMessageFormatFactory.massageFormat(message.getPayload()[0]);
-                if (messageFormat == null) {
-                    log.error("Message-format " + (int)message.getPayload()[0] + " not supported!");
-                    return;
-                }
-
-                // Create attribute location path stack.
-                Stack<String> location = new Stack<String>();
-                String[] topics = topic.split("/");
-                for (int i = topics.length - 1; i >= 0; --i) {
-                    location.push(topics[i]);
-                }
-
-                // Read the action tag from the topic.
-                String action = location.peek();
-                if ("@set".equals(action)) {
-                    location.pop();
-                    set(topic, location, messageFormat, data);
-                } else {
-                    log.error("Method \"" + location.pop() + "\" not supported!");
-                }
-            } catch (Exception exception) {
-                log.error("Exception: " + exception.getMessage());
-                exception.printStackTrace();
-            }
-        }
-
-        @Override
-        public void deliveryComplete(IMqttDeliveryToken iMqttDeliveryToken) {
-            // Does not matter.
-        }
-
-        /*** Runnable implementation **********************************************************************************/
-        @Override
-        public void run() {
-            mqtt.setCallback(null);
-
-            // As long as we are not connected, try to establish a connection to the broker.
-            while (!mqtt.isConnected()) {
-                try {
-                    // Try to connect to the broker.
-                    IMqttToken token = mqtt.connect(options, null, new IMqttActionListener() {
-                        @Override
-                        public void onSuccess(IMqttToken iMqttToken) {
-                            try {
-                                // Send birth message.
-                                mqtt.publish("@online/" + internal.uuid,
-                                    messageFormat.serializeEndpoint(InternalEndpoint.this), 1, true);
-
-                                // Subscribe to all set commands.
-                                mqtt.subscribe("@set/" + internal.uuid + "/#", 1);
-
-                                // Send all saved updates on update topic.
-                                if (persistence != null) {
-                                    new Thread(new Runnable() {
-                                        @Override
-                                        public void run() {
-                                            try {
-                                                @SuppressWarnings("unchecked")
-                                                Enumeration<String> keyEnum = persistence.keys();
-                                                while (mqtt.isConnected() && keyEnum.hasMoreElements()) {
-                                                    String key = keyEnum.nextElement();
-
-                                                    // Is it a pending update?
-                                                    if (key.startsWith("PendingUpdate-")) {
-
-                                                        // Get the pending update persistent object from store.
-                                                        MqttPersistable pendingUpdate = persistence.get(key);
-                                                        String uuid = key.substring(14, key.lastIndexOf("-")).replace(";", "/");
-
-                                                        // Try to send the update to the broker and remove it from the storage.
-                                                        try {
-                                                            mqtt.publish("@update/" + uuid,
-                                                                pendingUpdate.getHeaderBytes(), 1, false);
-                                                            persistence.remove(key);
-                                                        } catch (MqttException exception) {
-                                                            log.error("Exception: " + exception.getMessage());
-                                                            exception.printStackTrace();
-                                                        }
-
-                                                        try {
-                                                            Thread.sleep(100);
-                                                        } catch (InterruptedException exception) {
-                                                            log.error("Exception: " + exception.getMessage());
-                                                            exception.printStackTrace();
-                                                        }
-                                                    }
-                                                }
-                                            } catch (MqttPersistenceException exception) {
-                                                log.error("Exception: " + exception.getMessage());
-                                                exception.printStackTrace();
-                                            }
-
-                                        }
-                                    }).start();
-                                }
-                            } catch (MqttException exception) {
-                                log.error("Exception: " + exception.getMessage());
-                                exception.printStackTrace();
-                            }
-                        }
-
-                        @Override
-                        public void onFailure(IMqttToken iMqttToken, Throwable throwable) {
-                            log.error("Exception: " + throwable.getMessage());
-                            throwable.printStackTrace();
-                        }
-                    });
-
-                    // Wait for connect or error...
-                    token.waitForCompletion();
-
-                } catch (MqttException exception) {
-                    log.error("Exception during connect:", exception);
-                }
-
-                // If the connection could not be established, sleep a moment before the next try.
-                if (!mqtt.isConnected()) {
-                    // If we should not retry, give up.
-                    if (retryInterval == 0) return;
-
-                    // Wait the retry interval.
-                    try {
-                        Thread.sleep(1000 * retryInterval);
-                    } catch (InterruptedException exception) {
-                        log.error("Exception: " + exception.getMessage());
-                        exception.printStackTrace();
-                    }
-
-                    // Again, if we should not retry, give up.
-                    if (retryInterval == 0) return;
-                }
-            }
-
-            // If we arrive here, we are online, so we can inform listeners about that and stop the connecting thread.
-            mqtt.setCallback(this);
-            for (CloudioEndpointListener listener: listeners) {
-                listener.endpointIsOnline(CloudioEndpoint.this);
-            }
-        }
-
         /*** Package private methods **********************************************************************************/
         public List<CloudioNode.InternalNode> getNodes() {
             return nodes.toList();
         }
 
-        /*** Private methods ******************************************************************************************/
-        private SSLSocketFactory createSocketFactory(String endpointUuid, CloudioEndpointConfiguration properties)
-            throws Exception {
-            // Endpoint identity (Key & Certificate) in single PKCS #12 archive file named with the actual Endpoint ID.
-            KeyStore endpointKeyCertStore = KeyStore.getInstance(ENDPOINT_IDENTITY_FILE_TYPE);
-
-            // If the key file is present in settings, use it to load the identity file.
-            if (properties.containsKey(ENDPOINT_IDENTITY_FILE_PROPERTY)) {
-                endpointKeyCertStore.load(ResourceLoader.getResource(
-                                properties.getProperty(ENDPOINT_IDENTITY_FILE_PROPERTY), this),
-                        properties.getProperty(ENDPOINT_IDENTITY_PASS_PROPERTY,
-                                ENDPOINT_IDENTITY_PASS_DEFAULT).toCharArray());
-
-            // If the key file is not given, try to load from default locations.
-            } else {
-                endpointKeyCertStore.load(ResourceLoader.getResourceFromLocations(endpointUuid + ".p12", this,
-                                "home:" + "/.config/cloud.io/",
-                                "file:/etc/cloud.io/",
-                                "classpath:cloud.io/"),
-                        properties.getProperty(ENDPOINT_IDENTITY_PASS_PROPERTY,
-                                ENDPOINT_IDENTITY_PASS_DEFAULT).toCharArray());
-            }
-
-            KeyManagerFactory endpointKeyCertManagerFactory =
-                    KeyManagerFactory.getInstance(ENDPOINT_IDENTITY_MANAGER_TYPE);
-            endpointKeyCertManagerFactory.init(endpointKeyCertStore, "".toCharArray());
-
-            // Authority certificate in JKS format.
-            KeyStore authorityKeyStore = KeyStore.getInstance(CERT_AUTHORITY_FILE_TYPE);
-
-            if (properties.containsKey(CERT_AUTHORITY_FILE_PROPERTY)) {
-                authorityKeyStore.load(ResourceLoader.getResource(properties.getProperty(CERT_AUTHORITY_FILE_PROPERTY),
-                        this), properties.getProperty(CERT_AUTHORITY_PASS_PROPERTY,
-                    CERT_AUTHORITY_PASS_DEFAULT).toCharArray());
-            } else {
-                authorityKeyStore.load(ResourceLoader.getResourceFromLocations(CERT_AUTHORITY_FILE_DEFAULTNAME, this,
-                    "home:" + "/.config/cloud.io/",
-                    "file:/etc/cloud.io/",
-                    "classpath:cloud.io/"), properties.getProperty(CERT_AUTHORITY_PASS_PROPERTY,
-                    CERT_AUTHORITY_PASS_DEFAULT).toCharArray());
-            }
-
-            TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance(CERT_AUTHORITY_MANAGER_TYPE);
-            trustManagerFactory.init(authorityKeyStore);
-
-            // Create SSL Context.
-            SSLContext sslContext = SSLContext.getInstance(properties.getProperty(SSL_PROTOCOL_PROPERTY,
-                    SSL_PROTOCOL_DEFAULT));
-            sslContext.init(endpointKeyCertManagerFactory.getKeyManagers(), trustManagerFactory.getTrustManagers(), null);
-
-            return sslContext.getSocketFactory();
-        }
-
-        private void set(String topic, Stack<String> location, CloudioMessageFormat messageFormat, byte[] data)
+        public void set(String topic, Stack<String> location, CloudioMessageFormat messageFormat, byte[] data)
             throws Exception {
             // The path to the location must be start with the actual UUID of the endpoint.
             if (!location.isEmpty() && uuid.equals(location.pop()) &&
@@ -900,35 +554,14 @@ public class CloudioEndpoint implements CloudioEndpointService {
         }
 
         void close() {
-            // Disconnect.
-            retryInterval = 0;
-            if (mqtt.isConnected()) {
-                try {
-                    mqtt.disconnect();
-                } catch (MqttException exception) {
-                    exception.printStackTrace();
-                }
-            }
-
-            // Close MQTT.
-            try {
-                mqtt.close();
-            } catch (MqttException exception) {
-                exception.printStackTrace();
-            }
-
-            // Close persistence.
-            try {
-                persistence.close();
-            } catch (MqttPersistenceException exception) {
-                exception.printStackTrace();
-            }
+        	transport.disconnect();
 
             // Remove all nodes.
             for (CloudioNode.InternalNode node: nodes) {
                 node.close();
             }
             nodes.clear();
+
         }
 
         @Override
@@ -936,5 +569,31 @@ public class CloudioEndpoint implements CloudioEndpointService {
             super.finalize();
             close();
         }
+
+		@Override
+		public void onConnect() {
+			for (CloudioEndpointListener listener: listeners) {
+	            listener.endpointIsOnline(CloudioEndpoint.this);
+	        }
+		}
+
+		@Override
+		public void onDisconnect() {
+	        for (CloudioEndpointListener listener: listeners) {
+	            listener.endpointIsOffline(CloudioEndpoint.this);
+	        }
+		}
+
+		@Override
+		public void onRx(String topic, Stack<String> location, CloudioMessageFormat messageFormat, byte[] data) throws Exception {
+			 // Read the action tag from the topic.
+            String action = location.peek();
+            if ("@set".equals(action)) {
+                location.pop();
+                set(topic, location, messageFormat, data);
+            } else {
+                log.error("Method \"" + action + "\" not supported!");
+            }
+		}
     }
 }

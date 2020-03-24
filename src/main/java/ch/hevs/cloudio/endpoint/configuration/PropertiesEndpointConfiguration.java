@@ -1,4 +1,4 @@
-package ch.hevs.cloudio.endpoint;
+package ch.hevs.cloudio.endpoint.configuration;
 
 import java.util.Properties;
 
@@ -6,7 +6,7 @@ import java.util.Properties;
  * Implements the {@link CloudioEndpointConfiguration} interface using the Java properties {@link Properties} as configuration
  * source.
  */
-class PropertiesEndpointConfiguration implements CloudioEndpointConfiguration {
+public class PropertiesEndpointConfiguration implements CloudioEndpointConfiguration {
     private final Properties properties;
 
     /**

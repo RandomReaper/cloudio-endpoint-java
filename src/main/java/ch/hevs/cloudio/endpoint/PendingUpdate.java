@@ -7,7 +7,7 @@ import org.eclipse.paho.client.mqttv3.MqttPersistenceException;
  * Persistable object which saves an actual update message in the case the MQTT client is not already connected to the
  * broker. These messages are send when the connection to the broker could be established.
  */
-class PendingUpdate implements MqttPersistable {
+public class PendingUpdate implements MqttPersistable {
     /**
      * Create the persistable object from the given data.
      *

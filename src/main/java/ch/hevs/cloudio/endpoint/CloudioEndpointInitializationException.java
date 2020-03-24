@@ -8,11 +8,11 @@ import java.io.IOException;
  * initialization.
  */
 public class CloudioEndpointInitializationException extends IOException {
-    CloudioEndpointInitializationException(final String message) {
+    public CloudioEndpointInitializationException(final String message) {
         super(message);
     }
 
-    CloudioEndpointInitializationException(final Exception cause) {
+    public CloudioEndpointInitializationException(final Exception cause) {
         super(cause);
     }
 }
