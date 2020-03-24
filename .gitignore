@@ -114,3 +114,9 @@ documentation/_build
 # Data of runing dev containers
 /cloud/cloudio-cloud-run/config
 /cloud/cloudio-cloud-run/certificates
+
+# eclipse
+.project
+.classpath
+.settings
+bin
